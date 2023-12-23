@@ -1,0 +1,38 @@
+cluster autoscaler 설치
+
+
+1. ca 설치 전 iam oidc 적용
+
+eksctl utils associate-iam-oidc-provider \
+    --region ap-northeast-2 \    
+    --cluster prj-k8s-cluster \       
+    --approve
+
+
+eksctl create iamserviceaccount \
+  --cluster=prj-k8s-cluster \
+  --namespace=kube-system \
+  --name=cluster-autoscaler \
+  --attach-policy-arn=arn:aws:iam::457017831224:policy/ClusterAutoScaler \
+  --override-existing-serviceaccounts \
+  --approve
+
+2. Cluster Atuoscaler 프로젝트에서 제공하는 배포 예제 파일을 다운로드
+wget https://raw.githubusercontent.com/kubernetes/autoscaler/master/cluster-autoscaler/cloudprovider/aws/examples/cluster-autoscaler-autodiscover.yaml
+
+
+3. 다운로드한 cluster-autoscaler-autodiscover.yaml 열어 일부 수정
+
+          command:
+            - ./cluster-autoscaler
+            - --v=4
+            - --stderrthreshold=info
+            - --cloud-provider=aws
+            - --skip-nodes-with-local-storage=false
+            - --expander=least-waste
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/prj-k8s-cluster #cluster name
+
+4. 배포
+
+kubectl apply -f cluster-autoscaler-autodiscover.yaml
+

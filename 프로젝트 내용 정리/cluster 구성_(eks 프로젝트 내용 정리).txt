@@ -1,0 +1,56 @@
+1. cluster 구성
+- iam eks-clusterRole, eks-worknodeRole 생성
+
+# 강사님 메모장 파일 참고할 것 
+- bastion(ubuntu Linux EC2)에 AWS CLI 관리툴인 aws
+- EKS설치/운영 툴인  eksctl 설치
+- k8s 관리툴인 kubectl 설치
+- eksctl create cluster -f cluster.yaml
+
+이때 manage 꼭 들어가야함 - 후에 cluster autoscaling 하려면
+----------------------------------------------------
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: prj-k8s-cluster
+  region:  ap-northeast-2
+vpc:
+  subnets:
+    private:  # 워커노드가 속할 서브넷 기재
+      ap-northeast-2a: { id: subnet-074b8aa69a1af4bb3 }   
+      ap-northeast-2c: { id: subnet-0b20931f4403cfb6a }
+
+managedNodeGroups:
+  - name: prj-3tier-node1
+    labels: { role: workers }
+    instanceType: t3.medium
+    desiredCapacity: 1
+    privateNetworking: true
+    subnets:
+      - subnet-074b8aa69a1af4bb3
+  - name: prj-3tier-node2
+    labels: { role: workers }
+    instanceType: t3.medium
+    desiredCapacity: 1
+    privateNetworking: true
+    subnets:
+      - subnet-0b20931f4403cfb6a
+    iam:
+      withAddonPolicies:
+        imageBuilder: true
+-------------------------------------------------------
+
+일단 desiredCapacity=1 로 클러스터 생성되면
+이후에 워크 노드 갯수 변경은 아래의 명령어로 진행 가능 
+
+# 노드 조회
+kubectl get nodes -o wide 
+
+# 노드그룹 갯수 조회 
+eksctl get nodegroup --cluster=prj-k8s-cluster --region ap-northeast-2 --name prj-3tier-node1
+
+# 노드그룹 갯수 조정
+eksctl scale nodegroup --cluster=prj-k8s-cluster --nodes=1 --name=prj-3tier-node1 --nodes-max=4 --nodes-min=1
+
+
+

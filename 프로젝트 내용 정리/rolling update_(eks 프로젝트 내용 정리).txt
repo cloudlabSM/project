@@ -1,0 +1,11 @@
+rolling update 
+
+1. ecr에 tomcat 서비스 구성 파일 before 이미지와 after 이미지 구별하여 push하기
+
+2. after 이미지의 uri 주소 복사
+
+3. rolling update 명령어 입력
+
+kubectl set image deployment/deploy-tomcat -n prj-tomcat tomcat-prj=457017831224.dkr.ecr.ap-northeast-2.amazonaws.com/prj-tomcat:special
+
+4. 홈페이지 변경사항 확인(새로고침)

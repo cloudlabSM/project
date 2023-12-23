@@ -1,0 +1,66 @@
+1. hpa test 
+
+---------------------------------------------------
+# 먼저 hpa 는 metric server 설치가 필요함 
+
+-> 강사님 파일 참조
+
+---------------------------------------------------
+
+# 아래는 부하 걸기 
+
+kubectl create deployment load-generator --image=busybox -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://a27b6003be8764fc1a2f8a5b8be6d2a9-c7ba8258a0e75394.elb.ap-northeast-2.amazonaws.com/bid/; done"
+
+kubectl scale deployment load-generator --replicas=5
+
+# Busybox는 디버깅 및 테스트 용도로 자주 사용되는 가벼운 컨테이너 이미지
+# '/bin/sh -c ~ done"':' 쉘 명령어로, 0.01초마다 지정된 ELB URL로 무한히 HTTP GET 요청을 보내고, -O- 옵션을 사용하여 결과를 표준 출력(stdout)으로 출력합니다. 이 루프의 목적은 지정된 ELB 엔드포인트로 지속적인 요청 부하를 생성하는 것
+
+
+2. ca test
+
+# helm을 우선적으로 설치-> kube-ops-view 설치
+
+(1) helm 설치
+
+	1) helm repo add geek-cookbook https://geek-cookbook.github.io/charts/
+# repo 추가하기
+
+	2) helm install kube-ops-view geek-cookbook/kube-ops-view --version 1.2.2 --set env.TZ="Asia/Seoul" --namespace kube-system
+# kube-ops-view 설치
+
+	3) kubectl patch svc -n kube-system kube-ops-view -p '{"spec":{"type":"LoadBalancer"}}'
+# 서비스 패치
+
+	4) kubectl annotate service kube-ops-view -n kube-system "external-dns.alpha.kubernetes.io/hostname=kubeopsview.eating.monster"
+# 내 도메인으로 접속가능하도록 annotate
+
+	5) echo -e "Kube Ops View URL = http://kubeopsview.eating.monster:8080#scale=1.5"
+# ehco 명령으로 8080 포트로 접속하도록 넣어줌 
+
+
+(2) kube-ops-view install
+# kube-ops-view: 클러스터의 리소스에 대한 정보를 그림으로 제공해주는 서비스(nodes & pods & cpu Insight Tool)
+
+	1) helm repo add geek-cookbook https://geek-cookbook.github.io/charts/
+# repo 추가하기
+
+	2) helm install kube-ops-view geek-cookbook/kube-ops-view --version 1.2.2 --set env.TZ="Asia/Seoul" --namespace kube-system
+# kube-ops-view 설치
+
+	3) kubectl patch svc -n kube-system kube-ops-view -p '{"spec":{"type":"LoadBalancer"}}'
+# 서비스 패치
+
+	4) kubectl annotate service kube-ops-view -n kube-system "external-dns.alpha.kubernetes.io/hostname=kubeopsview.eating.monster"
+# 내 도메인으로 접속가능하도록 annotate
+
+	5) echo -e "Kube Ops View URL = http://kubeopsview.eating.monster:8080#scale=1.5"
+# ehco 명령으로 8080 포트로 접속하도록 넣어줌 
+
+(3) apache-bench(ab) 부하 테스트 
+
+ab -c 100 -n 1000000 http://a27b6003be8764fc1a2f8a5b8be6d2a9-c7ba8258a0e75394.elb.ap-northeast-2.amazonaws.com/bid/
+
+(( 혹은 ))
+
+kubectl run -i --tty load-generator --rm --image=busybox --restart=Never -- /bin/sh -c "while sleep 0.000001; do wget -q -O- http://a27b6003be8764fc1a2f8a5b8be6d2a9-c7ba8258a0e75394.elb.ap-northeast-2.amazonaws.com/bid/; done" 

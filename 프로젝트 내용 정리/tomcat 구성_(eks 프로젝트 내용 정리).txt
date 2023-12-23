@@ -1,0 +1,142 @@
+3. tomcat 구성
+
+(1) dockerfile
+---------------------------------------------------
+FROM tomcat:9.0.76
+
+
+RUN ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+RUN rm -rf /usr/local/tomcat/webapps/ROOT/*
+
+COPY cluster.tar /usr/local/tomcat/webapps/ROOT/cluster.tar
+# cluster.tar 는 웹서비스 프로젝트 파일들의 묶음
+
+COPY context.xml /usr/local/tomcat/conf/context.xml
+# RUN mkdir /usr/local/tomcat/webapps/ROOT
+
+COPY dbtest.jsp /usr/local/tomcat/webapps/ROOT/dbtest.jsp
+# dbtest.jsp 는 db 연결 확인용이라 필수는 아님 
+
+COPY mysql-connector-j-8.0.33.jar /usr/local/tomcat/lib/mysql-connector-j-8.0.33.jar
+# tomcat - mysql 연결 하는 드라이버 
+
+RUN tar -xf /usr/local/tomcat/webapps/ROOT/cluster.tar -C /usr/local/tomcat/webapps/ROOT
+# cluster.tar 압출 풀기 
+
+
+EXPOSE 8080
+CMD ["catalina.sh", "run"]
+------------------------------------------------------
+
+
+(2) context.xml 
+
+Tomcat 웹 애플리케이션의 설정 파일로 데이터베이스 연결과 관련된 정보들이 설정되며, 웹 애플리케이션의 동작과 데이터베이스와의 연동에 중요한 역할
+
+------------------------------------------------------------
+...
+
+    <Resource name="jdbc/mysql"
+           auth="Container"
+           type="javax.sql.DataSource"
+           username="admin"
+           password="Reca4444!"
+           driverClassName="com.mysql.jdbc.Driver"
+           url="jdbc:mysql://prj-rds-mysql.cluster-czh0sssi32uy.ap-northeast-2.rds.amazonaws.com:3306/prj_bid_s
+           maxActive="15"
+           maxIdle="3"/>
+
+...
+---------------------------------------------------------------
+- name: 데이터 소스의 이름을 지정합니다.
+- auth: 데이터베이스 연결 인증 방식을 설정합니다. 여기서는 "Container"로 설정되어 있으므로 컨테이너가 사용자 인증을 처리합니다.
+- type: 데이터 소스의 타입을 지정합니다. 여기서는 javax.sql.DataSource로 설정되어 있습니다.
+- username 및 password: MySQL 데이터베이스에 연결하기 위한 사용자 이름과 비밀번호를 지정합니다.
+- driverClassName: JDBC 드라이버 클래스 이름을 지정합니다.
+- url: 데이터베이스에 연결하기 위한 JDBC URL을 지정합니다.
+- maxActive 및 maxIdle: 데이터 소스의 최대 활성 연결 및 최대 유휴 연결 수를 지정합니다.
+
+
+(3) yaml
+
+----------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prj-tomcat
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: prj-tomcat
+  name: deploy-tomcat
+spec:
+  selector:
+    matchLabels:
+      app: tomcat
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: tomcat
+    spec:
+      containers:
+      - name: tomcat-prj
+        image: 457017831224.dkr.ecr.ap-northeast-2.amazonaws.com/prj-tomcat:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: 500m
+          requests:
+            cpu: 200m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tomcat-svc
+  labels:
+    run: tomcat
+  namespace: prj-tomcat
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: tomcat
+  type: NodePort
+  clusterIP: 172.20.59.60          # cluster IP 고정
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tomcat-hpa
+  namespace: prj-tomcat
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deploy-tomcat
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 50
+-----------------------------------------------------------------
+
+(4) cluster.tar
+
+cluster.tar 는 웹서비스 프로젝트 파일들의 묶음
+
+
+index.jsp 
+item1.jsp
+item2.jsp
+item3.jsp
+item4.jsp
+등으로 구성됨
+
+
+(5) mysql-connector-j-8.0.33.jar
+
+
+

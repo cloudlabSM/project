@@ -1,0 +1,136 @@
+2. nginx 구성
+
+(1) dockerfile 
+
+---------------------------------------------------------------
+FROM nginx:1.15
+
+# 작성자 정보를 추가할 수 있습니다. (선택사항)
+# LABEL maintainer="JHHwang <jhhwang@example.com>"
+
+# 시간을 서울 시간으로 동기화합니다. 
+RUN ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+
+# html 디렉토리 이하에 설정파일을 변경하기 전에 깨끗이 비워둡니다.
+RUN rm -rf /usr/share/nginx/html/*
+
+# 컨테이너 내부에 파일을 복사합니다.
+COPY default.conf /etc/nginx/conf.d/default.conf
+
+# nginx.tar 에는 index.html 및 html 에 필요한 구성 파일들 포함됨
+COPY nginx.tar /usr/share/nginx/html/nginx.tar
+
+# 컨테이너 내부에서 압축을 풀어줍니다. 
+RUN tar -xf /usr/share/nginx/html/nginx.tar -C /usr/share/nginx/html
+
+
+# 컨테이너 내에서 리스닝할 포트를 지정합니다. 기본적으로 NGINX는 80 포트를 사용합니다.
+EXPOSE 80
+
+# 컨테이너 시작 시 실행할 명령어를 지정합니다.
+CMD ["nginx", "-g", "daemon off;"]
+------------------------------------------------------------
+
+(2) default.conf
+
+nginx 와 tomcat을 연동하는 proxy 설정 내용이 들어가는 파일입니다. 
+
+정적 페이지는 도메인 주소/
+동적 페이지는 도메인주소/bid/ 로 접속하도록 설정
+------------------------------------------------------------
+    root   /usr/share/nginx/html;
+  index  index.html;
+
+    location /bid/ {
+        proxy_pass http://톰캣의 cluster ip:8080/;
+	proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+------------------------------------------------------------
+
+
+(3) deployment, svc, hpa yaml 파일
+
+vi nginx_prj.yaml
+
+------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prj-nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: prj-nginx
+  name: deploy-nginx
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx-prj
+        image: 457017831224.dkr.ecr.ap-northeast-2.amazonaws.com/prj-nginx:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+          requests:
+            cpu: 200m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-svc
+  labels:
+    run: nginx
+  namespace: prj-nginx
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/target-type: instance
+    service.beta.kubernetes.io/subnets: subnet-074b8aa69a1af4bb3, subnet-0b20931f4403cfb6a
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:ap-northeast-2:457017831224:certificate/972eaab7-4da6-475a-bb45-039ad1e95258
+spec:
+  selector:
+    app: nginx
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30011
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 80
+      nodePort: 30012
+  type: LoadBalancer
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-hpa
+  namespace: prj-nginx
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: deploy-nginx
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 50
+--------------------------------------------------------------------
+
+중점: nlb 설명, hpa 설명
