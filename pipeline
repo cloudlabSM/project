@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+    environment {
+        ECR_REGISTRY = "457017831224.dkr.ecr.ap-northeast-2.amazonaws.com"
+        DOCKERHUB_CREDENTIALS = credentials('jenkinsdocker')
+    }
+
+    stages {
+        stage('Pulling Projects') {
+            steps {
+                withAWS(credentials: 'jenkinsaws', region: 'ap-northeast-2') {
+                    sh 'aws s3 cp s3://dev-s3bucket-test/after.tar /home/tomcat_prj/cluster.tar'
+                }
+            }
+        }
+
+        stage('Login to ECR') {
+            steps {
+                withAWS(credentials: 'jenkinsaws', region: 'ap-northeast-2') {
+                    script {
+                        def ecrLogin = sh(returnStdout: true, script: "aws ecr get-login-password --region ap-northeast-2")
+                        sh "docker login --username AWS --password ${ecrLogin.trim()} ${ECR_REGISTRY}"
+                    }
+                }
+            }
+        }
+
+
+        stage('Building Docker Image') {
+            steps {
+                script {
+                    def prjDir = '/home/tomcat_prj'
+                    echo "Build start in ${prjDir}"
+                    sh "docker build -t prj-tomcat ${prjDir}"
+                    echo "Build end"
+                }
+            }
+        }
+        stage('Builded Image Tagging') {
+            steps {
+                sh 'docker tag prj-tomcat:latest 457017831224.dkr.ecr.ap-northeast-2.amazonaws.com/prj-tomcat:special'
+            }
+        }
+        stage('Push Image to ECR') {
+            steps {
+                sh 'docker push 457017831224.dkr.ecr.ap-northeast-2.amazonaws.com/prj-tomcat:special'
+            }
+        }
+        stage('Rolling Update') {
+            steps {
+                sh '/var/lib/jenkins/bin/kubectl set image deployment/deploy-tomcat tomcat-prj=457017831224.dkr.ecr.ap-northeast-2.amazonaws.com/prj-tomcat:special -n prj-tomcat'
+            }
+        }
+    }
